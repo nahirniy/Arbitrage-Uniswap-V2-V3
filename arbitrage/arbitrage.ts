@@ -1,20 +1,15 @@
 import { ethers } from "ethers";
-import { quoterABI } from "../abis/Quoter";
-import { pairV2Abi } from "../abis/PairV2";
-import { poolV3Abi } from "../abis/PoolV3";
-import { createQuoteParams, getAmountOutV2, getPotentialProfit, getPriceFromV3, log } from "./helpers";
+import { getPriceFromV2, getPriceFromV3, log } from "./helpers";
+import { calculateProfitV3ToV2 } from "./calculateProfit";
+import { calculateProfitV2ToV3 } from "./calculateProfit";
+import { getInitialData } from "./initialData";
 import {
-	PROVIDER,
-	QUOTER_CONTRACT,
-	V2_POOL_CONTRACT,
-	V3_POOL_CONTRACT,
 	TOKEN_IN,
 	STEP_FOR_ARBITRAGE,
 	MIN_AMOUNT_FOR_ARBITRAGE,
 	MAX_AMOUNT_FOR_ARBITRAGE,
 	DECREASE_STEP_FOR_ARBITRAGE,
 } from "./config";
-import { getPriceFromV2 } from "./helpers";
 
 const getArbitrageOpportunity = async () => {
 	const { reserves, sqrtPriceX96, token0V2, token1V2, token0V3, token1V3, quoter } = await getInitialData();
@@ -96,69 +91,3 @@ const getArbitrageOpportunity = async () => {
 };
 
 getArbitrageOpportunity();
-
-async function getInitialData() {
-	const quoter = new ethers.Contract(QUOTER_CONTRACT, quoterABI, PROVIDER);
-	const poolV2 = new ethers.Contract(V2_POOL_CONTRACT, pairV2Abi, PROVIDER);
-	const poolV3 = new ethers.Contract(V3_POOL_CONTRACT, poolV3Abi, PROVIDER);
-
-	const reserves = await poolV2.getReserves();
-	const sqrtPriceX96 = (await poolV3.slot0())[0];
-	const token0V2 = await poolV2.token0();
-	const token1V2 = await poolV2.token1();
-	const token0V3 = await poolV3.token0();
-	const token1V3 = await poolV3.token1();
-
-	return { reserves, sqrtPriceX96, token0V2, token1V2, token0V3, token1V3, quoter };
-}
-
-async function calculateProfitV2ToV3(
-	optimalAmountIn: bigint,
-	reserves: bigint[],
-	token0V2: string,
-	token1V2: string,
-	token0V3: string,
-	token1V3: string,
-	quoter: ethers.Contract
-) {
-	const tokenInV2 = TOKEN_IN;
-	const tokenOutV2 = token0V2 === TOKEN_IN ? token1V2 : token0V2;
-
-	const reserveIn = token0V2 === TOKEN_IN ? reserves[0] : reserves[1];
-	const reserveOut = token0V2 === TOKEN_IN ? reserves[1] : reserves[0];
-	const v2AmountOut = getAmountOutV2(optimalAmountIn, reserveIn, reserveOut);
-
-	const tokenInV3 = tokenOutV2;
-	const tokenOutV3 = token0V3 === tokenInV3 ? token1V3 : token0V3;
-
-	const quoteParams = createQuoteParams(v2AmountOut, tokenInV3, tokenOutV3);
-	const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
-
-	const currentProfit = getPotentialProfit(optimalAmountIn, v3AmountOut);
-	return currentProfit;
-}
-
-async function calculateProfitV3ToV2(
-	optimalAmountIn: bigint,
-	reserves: bigint[],
-	token0V2: string,
-	token1V2: string,
-	token0V3: string,
-	token1V3: string,
-	quoter: ethers.Contract
-) {
-	const tokenInV3 = TOKEN_IN;
-	const tokenOutV3 = token0V3 === TOKEN_IN ? token1V3 : token0V3;
-
-	const quoteParams = createQuoteParams(optimalAmountIn, tokenInV3, tokenOutV3);
-	const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
-
-	const tokenInV2 = tokenOutV3;
-	const reserveIn = token0V2 === tokenInV2 ? reserves[0] : reserves[1];
-	const reserveOut = token0V2 === tokenInV2 ? reserves[1] : reserves[0];
-
-	const v2AmountOut = getAmountOutV2(v3AmountOut, reserveIn, reserveOut);
-
-	const currentProfit = getPotentialProfit(optimalAmountIn, v2AmountOut);
-	return currentProfit;
-}
