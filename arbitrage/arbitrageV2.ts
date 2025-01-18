@@ -30,59 +30,43 @@ const getArbitrageOpportunity = async () => {
 
 	let currentStepForArbitrage = ethers.parseUnits(STEP_FOR_ARBITRAGE.toString(), 18);
 	let optimalAmountIn = ethers.parseUnits(MIN_AMOUNT_FOR_ARBITRAGE.toString(), 18);
-
+	
+	let maxProfit = 0;
 	let left = ethers.parseUnits(MIN_AMOUNT_FOR_ARBITRAGE.toString(), 18);
 	let right = ethers.parseUnits(MAX_AMOUNT_FOR_ARBITRAGE.toString(), 18);
-
-	let maxProfit = 0;
-	let stepForArbitrageIsDecreased = false;
-
-	while (right - left > currentStepForArbitrage) {
+	
+	while (right - left >= currentStepForArbitrage) {
 		let mid = left + (right - left) / BigInt(2);
 
 		const currentProfit = isV2First
 			? await calculateProfitV2ToV3(mid, reserves, token0V2, token1V2, token0V3, token1V3, quoter)
 			: await calculateProfitV3ToV2(mid, reserves, token0V2, token1V2, token0V3, token1V3, quoter);
+	
+		if (currentProfit > maxProfit) {
+			left = mid + currentStepForArbitrage;
+		} else {
+			right = mid - currentStepForArbitrage;
+		}
 
 		if (currentProfit > maxProfit) {
-			const formattedOptimalAmountIn = (Number(mid) / Number(precision)).toFixed(8);
-
-			log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${formattedOptimalAmountIn}`);
+			const formattedMid = (Number(mid) / Number(precision)).toFixed(8);
+			log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${formattedMid}`);
+	
 			maxProfit = currentProfit;
 			optimalAmountIn = mid;
 		}
 
-		const bestRangeIsFound = !stepForArbitrageIsDecreased && currentProfit < maxProfit && currentProfit > 0;
-		const bestOptimalAmountIsFound = stepForArbitrageIsDecreased && currentProfit < maxProfit && currentProfit > 0;
-
-		if (bestRangeIsFound) {
-			const formattedOptimalAmountIn = (Number(optimalAmountIn) / Number(precision)).toFixed(8);
-
-			log.success(`We found best range in optimal amount: ${formattedOptimalAmountIn} with step: ${STEP_FOR_ARBITRAGE}`);
-			log.success(`Potential profit for this amount: ${maxProfit}$`);
-			log.info(`Step decreasing... Try to find better optimal amount...`);
-
-			stepForArbitrageIsDecreased = true;
-			right = mid;
-			currentStepForArbitrage = (currentStepForArbitrage * BigInt(DECREASE_STEP_FOR_ARBITRAGE)) / BigInt(100);
-		} else if (bestOptimalAmountIsFound) {
-			const formattedOptimalAmountIn = (Number(optimalAmountIn) / Number(precision)).toFixed(8);
-			log.success(`Found best optimal amount in: ${formattedOptimalAmountIn}`);
-
-			break;
-		} else {
-			if (currentProfit > maxProfit) {
-				left = mid + currentStepForArbitrage;
-			} else {
-				right = mid - currentStepForArbitrage;
-			}
+		if (right - left < currentStepForArbitrage) {
+			log.info(`Reducing step size for search better optimal amount in...`);
+			currentStepForArbitrage = currentStepForArbitrage * BigInt(DECREASE_STEP_FOR_ARBITRAGE) / BigInt(100);
 		}
 	}
 
 	if (maxProfit === 0) {
 		log.warning("Potential profit is 0: No opportunity for arbitrage");
 	} else {
-		log.success(`Potential profit: ${maxProfit}$ with amount in: ${Number(optimalAmountIn) / Number(precision)}`);
+		const finalOptimalAmountIn = (Number(optimalAmountIn) / Number(precision)).toFixed(8);
+		log.success(`Potential profit: ${maxProfit}$ with amount in: ${finalOptimalAmountIn}`);
 	}
 
 	const endTimestamp = Date.now();
