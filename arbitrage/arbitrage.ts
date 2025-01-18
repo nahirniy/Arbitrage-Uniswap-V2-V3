@@ -6,26 +6,20 @@ import { createQuoteParams, getAmountOutV2, getPotentialProfit, getPriceFromV3, 
 import { PROVIDER, QUOTER_CONTRACT, V2_POOL_CONTRACT, V3_POOL_CONTRACT, TOKEN_IN, STEP_FOR_ARBITRAGE, MIN_AMOUNT_FOR_ARBITRAGE, MAX_AMOUNT_FOR_ARBITRAGE, DECREASE_STEP_FOR_ARBITRAGE } from "./config";
 import { getPriceFromV2 } from "./helpers";
 
-// weth / usdc v2
 const getArbitrageOpportunity = async () => {
-	const quoter = new ethers.Contract(QUOTER_CONTRACT, quoterABI, PROVIDER);
-	const poolV2 = new ethers.Contract(V2_POOL_CONTRACT, pairV2Abi, PROVIDER);
-	const poolV3 = new ethers.Contract(V3_POOL_CONTRACT, poolV3Abi, PROVIDER);
-
-	const reserves = await poolV2.getReserves();
-	const sqrtPriceX96 = (await poolV3.slot0())[0];
-
-	const token0V2 = await poolV2.token0();
-	const token1V2 = await poolV2.token1();
-	const token0V3 = await poolV3.token0();
-	const token1V3 = await poolV3.token1();
+	const { reserves, sqrtPriceX96, token0V2, token1V2, token0V3, token1V3, quoter } = await getInitialData()
 
 	const priceV2 = getPriceFromV2(reserves, token0V2, TOKEN_IN);
 	const priceV3 = getPriceFromV3(sqrtPriceX96, token0V3, TOKEN_IN);
 
-	if (priceV2 === priceV3) log.error("No opportunity for arbitrage: price between v2 and v3 is the same");
+	if (priceV2 === priceV3) {
+		log.error("No opportunity for arbitrage: price between v2 and v3 is the same");
+		return;
+	}
+
 	const isV2First = priceV2 < priceV3;
 	log.start(`Arbitrage must be done from ${isV2First ? "v2 to v3" : "v3 to v2"}`);
+
 
 	const startTimestamp = Date.now();
 	const precision = BigInt(10 ** 18);
@@ -42,20 +36,7 @@ const getArbitrageOpportunity = async () => {
 		if (i !== 0) optimalAmountIn += currentStepForArbitrage;
 
 		if (isV2First) {
-			const tokenInV2 = TOKEN_IN;
-			const tokenOutV2 = token0V2 === TOKEN_IN ? token1V2 : token0V2;
-	
-			const reserveIn = token0V2 === TOKEN_IN ? reserves[0] : reserves[1];
-			const reserveOut = token0V2 === TOKEN_IN ? reserves[1] : reserves[0];
-			const v2AmountOut = getAmountOutV2(optimalAmountIn, reserveIn, reserveOut);
-	
-			const tokenInV3 = tokenOutV2;
-			const tokenOutV3 = token0V3 === tokenInV3 ? token1V3 : token0V3;
-	
-			const quoteParams = createQuoteParams(v2AmountOut, tokenInV3, tokenOutV3);
-			const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
-
-			const currentProfit = getPotentialProfit(optimalAmountIn, v3AmountOut);
+			const currentProfit = await calculateProfitV2ToV3(optimalAmountIn, reserves, token0V2, token1V2, token0V3, token1V3, quoter);
 
 			if (currentProfit > maxProfit) {
 				log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${optimalAmountIn}`);
@@ -87,19 +68,7 @@ const getArbitrageOpportunity = async () => {
 				break;
 			}
 		} else {
-			const tokenInV3 = TOKEN_IN;
-			const tokenOutV3 = token0V3 === TOKEN_IN ? token1V3 : token0V3;
-	
-			const quoteParams = createQuoteParams(optimalAmountIn, tokenInV3, tokenOutV3);
-			const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
-	
-			const tokenInV2 = tokenOutV3;
-			const reserveIn = token0V2 === tokenInV2 ? reserves[0] : reserves[1];
-			const reserveOut = token0V2 === tokenInV2 ? reserves[1] : reserves[0];
-	
-			const v2AmountOut = getAmountOutV2(v3AmountOut, reserveIn, reserveOut);
-
-			const currentProfit = getPotentialProfit(optimalAmountIn, v2AmountOut);
+			const currentProfit = await calculateProfitV3ToV2(optimalAmountIn, reserves, token0V2, token1V2, token0V3, token1V3, quoter);
 
 			if (currentProfit > maxProfit) {
 				log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${optimalAmountIn / precision}`);
@@ -143,10 +112,69 @@ const getArbitrageOpportunity = async () => {
 
 getArbitrageOpportunity();
 
-function getArbitrageFromV2ToV3() {
 
-}
+async function getInitialData() {
+	const quoter = new ethers.Contract(QUOTER_CONTRACT, quoterABI, PROVIDER);
+	const poolV2 = new ethers.Contract(V2_POOL_CONTRACT, pairV2Abi, PROVIDER);
+	const poolV3 = new ethers.Contract(V3_POOL_CONTRACT, poolV3Abi, PROVIDER);
 
-function getArbitrageFromV3ToV2() {
+	const reserves = await poolV2.getReserves();
+	const sqrtPriceX96 = (await poolV3.slot0())[0];
+	const token0V2 = await poolV2.token0();
+	const token1V2 = await poolV2.token1();
+	const token0V3 = await poolV3.token0();
+	const token1V3 = await poolV3.token1();
 
+	return { reserves, sqrtPriceX96, token0V2, token1V2, token0V3, token1V3, quoter };
+};
+
+async function calculateProfitV2ToV3(
+	optimalAmountIn: bigint,
+	reserves: bigint[],
+	token0V2: string,
+	token1V2: string,
+	token0V3: string,
+	token1V3: string,
+	quoter: ethers.Contract
+) {
+		const tokenInV2 = TOKEN_IN;
+		const tokenOutV2 = token0V2 === TOKEN_IN ? token1V2 : token0V2;
+
+		const reserveIn = token0V2 === TOKEN_IN ? reserves[0] : reserves[1];
+		const reserveOut = token0V2 === TOKEN_IN ? reserves[1] : reserves[0];
+		const v2AmountOut = getAmountOutV2(optimalAmountIn, reserveIn, reserveOut);
+	
+		const tokenInV3 = tokenOutV2;
+		const tokenOutV3 = token0V3 === tokenInV3 ? token1V3 : token0V3;
+	
+		const quoteParams = createQuoteParams(v2AmountOut, tokenInV3, tokenOutV3);
+		const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
+
+		const currentProfit = getPotentialProfit(optimalAmountIn, v3AmountOut);
+		return currentProfit;
+};
+
+async function calculateProfitV3ToV2(
+	optimalAmountIn: bigint,
+	reserves: bigint[],
+	token0V2: string,
+	token1V2: string,
+	token0V3: string,
+	token1V3: string,
+	quoter: ethers.Contract
+) {
+		const tokenInV3 = TOKEN_IN;
+		const tokenOutV3 = token0V3 === TOKEN_IN ? token1V3 : token0V3;
+
+		const quoteParams = createQuoteParams(optimalAmountIn, tokenInV3, tokenOutV3);
+		const v3AmountOut = (await quoter.quoteExactInputSingle.staticCall(quoteParams))[0];
+
+		const tokenInV2 = tokenOutV3;
+		const reserveIn = token0V2 === tokenInV2 ? reserves[0] : reserves[1];
+		const reserveOut = token0V2 === tokenInV2 ? reserves[1] : reserves[0];
+
+		const v2AmountOut = getAmountOutV2(v3AmountOut, reserveIn, reserveOut);
+
+		const currentProfit = getPotentialProfit(optimalAmountIn, v2AmountOut);
+		return currentProfit;
 }
