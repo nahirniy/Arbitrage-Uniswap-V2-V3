@@ -50,7 +50,9 @@ const getArbitrageOpportunity = async () => {
 			: await calculateProfitV3ToV2(mid, reserves, token0V2, token1V2, token0V3, token1V3, quoter);
 
 		if (currentProfit > maxProfit) {
-			log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${mid / precision}`);
+			const formattedOptimalAmountIn = (Number(mid) / Number(precision)).toFixed(8);
+
+			log.info(`Potential profit increased: ${currentProfit}$. Amount in must be: ${formattedOptimalAmountIn}`);
 			maxProfit = currentProfit;
 			optimalAmountIn = mid;
 		}
@@ -59,9 +61,9 @@ const getArbitrageOpportunity = async () => {
 		const bestOptimalAmountIsFound = stepForArbitrageIsDecreased && currentProfit < maxProfit && currentProfit > 0;
 
 		if (bestRangeIsFound) {
-			const currentOptimalAmountIn = optimalAmountIn / precision;
+			const formattedOptimalAmountIn = (Number(optimalAmountIn) / Number(precision)).toFixed(8);
 
-			log.success(`We found best range in optimal amount: ${currentOptimalAmountIn} with step: ${STEP_FOR_ARBITRAGE}`);
+			log.success(`We found best range in optimal amount: ${formattedOptimalAmountIn} with step: ${STEP_FOR_ARBITRAGE}`);
 			log.success(`Potential profit for this amount: ${maxProfit}$`);
 			log.info(`Step decreasing... Try to find better optimal amount...`);
 
@@ -69,7 +71,8 @@ const getArbitrageOpportunity = async () => {
 			right = mid;
 			currentStepForArbitrage = (currentStepForArbitrage * BigInt(DECREASE_STEP_FOR_ARBITRAGE)) / BigInt(100);
 		} else if (bestOptimalAmountIsFound) {
-			log.success(`Found best optimal amount in: ${optimalAmountIn / precision}`);
+			const formattedOptimalAmountIn = (Number(optimalAmountIn) / Number(precision)).toFixed(8);
+			log.success(`Found best optimal amount in: ${formattedOptimalAmountIn}`);
 
 			break;
 		} else {
@@ -81,7 +84,11 @@ const getArbitrageOpportunity = async () => {
 		}
 	}
 
-	if (maxProfit === 0) log.warning("Potential profit is 0: No opportunity for arbitrage");
+	if (maxProfit === 0) {
+		log.warning("Potential profit is 0: No opportunity for arbitrage");
+	} else {
+		log.success(`Potential profit: ${maxProfit}$ with amount in: ${Number(optimalAmountIn) / Number(precision)}`);
+	}
 
 	const endTimestamp = Date.now();
 	const reportAboutTime = `Spend on looking for arbitrage opportunity: ${((endTimestamp - startTimestamp) / 1000 / 60).toFixed(

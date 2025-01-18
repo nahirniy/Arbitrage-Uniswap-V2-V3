@@ -15,7 +15,7 @@ export const getPriceFromV3 = (sqrtPriceX96: bigint, token0V3: string, tokenIn: 
 	const price = sqrtPrice * sqrtPrice;
 
 	const priceV3 = tokenIn === token0V3 ? 1 / price : price;
-	const formattedPrice = Number((Number(priceV3) / 1e18).toFixed(2));
+	const formattedPrice = Number(priceV3.toFixed(8));
 
 	return formattedPrice;
 }
@@ -39,13 +39,13 @@ export const getPotentialProfit = (amountIn: bigint, amountOut: bigint) => {
 }
 
 export const getPriceFromV2 = (reserves: bigint[], token0V2: string, tokenIn: string) => {
-	const reserveStable = token0V2 === tokenIn ? reserves[1] : reserves[0];
-	const reserveOther = token0V2 === tokenIn ? reserves[0] : reserves[1];
+	const reserveOne = token0V2 === tokenIn ? reserves[1] : reserves[0];
+	const reserveTwo = token0V2 === tokenIn ? reserves[0] : reserves[1];
 
 	const precision = BigInt(10 ** 18);
-	const price = (reserveOther * precision) / reserveStable;
+	const price = (reserveTwo * precision) / reserveOne;
 
-	const formattedPrice = Number((Number(price) / 1e18).toFixed(2));
+	const formattedPrice = Number((Number(price) / 1e18).toFixed(8));
 	return formattedPrice;
 }
 
