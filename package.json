@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start-v1": "tsc && node dist/arbitrage/arbitrage.js",
-    "start-v2": "tsc && node dist/arbitrage/arbitrageVer2.js"
+    "start-v2": "tsc && node dist/arbitrage/arbitrageV2.js"
   },
   "keywords": [],
   "author": "",

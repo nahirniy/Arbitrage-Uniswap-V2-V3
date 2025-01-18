@@ -1,7 +1,7 @@
 import { JsonRpcProvider } from "ethers";
 
 export const V3_POOL_FEE = 3000;
-export const PROVIDER_URL = "https://sepolia.infura.io/v3/key";
+export const PROVIDER_URL = "https://sepolia.infura.io/v3/6fe78645e9954e1483bdeae36115da2c";
 
 export const TOKEN_IN = "0xa30A4e6C1f854ba0a51FfAF3b8A4E26f61951411"; // usdc
 // 0xd609b0dF13257cDBE8B981071ecA4F92b52367A4 // weth
